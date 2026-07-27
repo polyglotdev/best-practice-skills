@@ -11,46 +11,48 @@ Concurrency bugs are the hardest class of bug in Go to catch by reading code alo
 **How to detect it:** For every `go func() {...}()` or `go someFunc(...)` call site, check: is there a mechanism (a `done`/`stop` channel, a `context.Context`, a `sync.WaitGroup`) that lets some other part of the program know when this goroutine exits, or ask it to exit? If the goroutine runs forever with no observable lifecycle, that's the smell.
 
 **Example violation — nobody owns this goroutine's lifecycle:**
+
 ```go
 func StartWatcher(url string) {
-	go func() {
-		for {
-			poll(url)
-			time.Sleep(time.Minute)
-		}
-	}()
-	// no way to stop this, ever, for the lifetime of the process
+  go func() {
+    for {
+      poll(url)
+      time.Sleep(time.Minute)
+    }
+  }()
+  // no way to stop this, ever, for the lifetime of the process
 }
 ```
 
 **Corrected:**
+
 ```go
 type Watcher struct {
-	stop chan struct{}
-	done chan struct{}
+  stop chan struct{}
+  done chan struct{}
 }
 
 func StartWatcher(url string) *Watcher {
-	w := &Watcher{stop: make(chan struct{}), done: make(chan struct{})}
-	go func() {
-		defer close(w.done)
-		ticker := time.NewTicker(time.Minute)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-w.stop:
-				return
-			case <-ticker.C:
-				poll(url)
-			}
-		}
-	}()
-	return w
+  w := &Watcher{stop: make(chan struct{}), done: make(chan struct{})}
+  go func() {
+    defer close(w.done)
+    ticker := time.NewTicker(time.Minute)
+    defer ticker.Stop()
+    for {
+      select {
+      case <-w.stop:
+        return
+      case <-ticker.C:
+        poll(url)
+      }
+    }
+  }()
+  return w
 }
 
 func (w *Watcher) Stop() {
-	close(w.stop)
-	<-w.done
+  close(w.stop)
+  <-w.done
 }
 ```
 
@@ -67,31 +69,34 @@ func (w *Watcher) Stop() {
 **How to detect it:** Grep for `go func()` calls whose closure has no return value collection, no `WaitGroup.Done()`, and no error channel — the goroutine's outcome (success, failure, or panic) is simply discarded.
 
 **Example violation:**
+
 ```go
 func ProcessOrder(o Order) {
-	go sendConfirmationEmail(o) // if this panics or fails, nobody ever finds out
+  go sendConfirmationEmail(o) // if this panics or fails, nobody ever finds out
 }
 ```
 
 **Corrected:**
+
 ```go
 func ProcessOrder(ctx context.Context, o Order) error {
-	g, ctx := errgroup.WithContext(ctx)
-	g.Go(func() error {
-		return sendConfirmationEmail(ctx, o)
-	})
-	return g.Wait()
+  g, ctx := errgroup.WithContext(ctx)
+  g.Go(func() error {
+    return sendConfirmationEmail(ctx, o)
+  })
+  return g.Wait()
 }
 ```
 
 If the email genuinely should not block order processing, at minimum log the outcome and bound the goroutine's lifetime:
+
 ```go
 func ProcessOrder(ctx context.Context, o Order) {
-	go func() {
-		if err := sendConfirmationEmail(ctx, o); err != nil {
-			slog.ErrorContext(ctx, "confirmation email failed", "order", o.ID, "err", err)
-		}
-	}()
+  go func() {
+    if err := sendConfirmationEmail(ctx, o); err != nil {
+      slog.ErrorContext(ctx, "confirmation email failed", "order", o.ID, "err", err)
+    }
+  }()
 }
 ```
 
@@ -108,29 +113,31 @@ func ProcessOrder(ctx context.Context, o Order) {
 **How to detect it:** Grep `func init()` bodies for `go func` or `go someFunc(`.
 
 **Example violation:**
+
 ```go
 func init() {
-	go pollConfigChanges() // starts as soon as anyone imports this package, no way to stop it
+  go pollConfigChanges() // starts as soon as anyone imports this package, no way to stop it
 }
 ```
 
 **Corrected:**
+
 ```go
 type ConfigPoller struct {
-	stop chan struct{}
+  stop chan struct{}
 }
 
 func NewConfigPoller() *ConfigPoller {
-	p := &ConfigPoller{stop: make(chan struct{})}
-	return p
+  p := &ConfigPoller{stop: make(chan struct{})}
+  return p
 }
 
 func (p *ConfigPoller) Start() {
-	go p.pollLoop()
+  go p.pollLoop()
 }
 
 func (p *ConfigPoller) Stop() {
-	close(p.stop)
+  close(p.stop)
 }
 ```
 
@@ -147,30 +154,32 @@ func (p *ConfigPoller) Stop() {
 **How to detect it:** For every struct containing a `sync.Mutex`/`sync.RWMutex`, check (a) that it's declared with `var mu sync.Mutex`, not `new(sync.Mutex)` or a pointer field, and (b) that the containing type is never passed or returned by value, and (c) that the mutex field is unexported and never embedded (an embedded mutex leaks `Lock`/`Unlock` into the type's public API).
 
 **Example violation — embedded and copyable:**
+
 ```go
 type Counter struct {
-	sync.Mutex // embedded — leaks Lock/Unlock as public methods
-	n          int
+  sync.Mutex // embedded — leaks Lock/Unlock as public methods
+  n          int
 }
 
 func Increment(c Counter) { // passed by value — copies the mutex
-	c.Lock()
-	c.n++
-	c.Unlock()
+  c.Lock()
+  c.n++
+  c.Unlock()
 }
 ```
 
 **Corrected:**
+
 ```go
 type Counter struct {
-	mu sync.Mutex
-	n  int
+  mu sync.Mutex
+  n  int
 }
 
 func (c *Counter) Increment() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.n++
+  c.mu.Lock()
+  defer c.mu.Unlock()
+  c.n++
 }
 ```
 
@@ -187,52 +196,54 @@ func (c *Counter) Increment() {
 **How to detect it:** Look for manual `sync.WaitGroup` + shared-error-variable patterns where multiple goroutines can fail independently and the code hand-rolls collecting the first error and canceling the rest.
 
 **Example violation (hand-rolled, racy error capture):**
+
 ```go
 func FetchAll(ctx context.Context, ids []string) ([]*Partner, error) {
-	var wg sync.WaitGroup
-	var mu sync.Mutex
-	var firstErr error
-	results := make([]*Partner, len(ids))
-	for i, id := range ids {
-		wg.Add(1)
-		go func(i int, id string) {
-			defer wg.Done()
-			p, err := fetch(ctx, id)
-			if err != nil {
-				mu.Lock()
-				if firstErr == nil {
-					firstErr = err
-				}
-				mu.Unlock()
-				return
-			}
-			results[i] = p
-		}(i, id)
-	}
-	wg.Wait()
-	return results, firstErr
+  var wg sync.WaitGroup
+  var mu sync.Mutex
+  var firstErr error
+  results := make([]*Partner, len(ids))
+  for i, id := range ids {
+    wg.Add(1)
+    go func(i int, id string) {
+      defer wg.Done()
+      p, err := fetch(ctx, id)
+      if err != nil {
+        mu.Lock()
+        if firstErr == nil {
+          firstErr = err
+        }
+        mu.Unlock()
+        return
+      }
+      results[i] = p
+    }(i, id)
+  }
+  wg.Wait()
+  return results, firstErr
 }
 ```
 
 **Corrected:**
+
 ```go
 func FetchAll(ctx context.Context, ids []string) ([]*Partner, error) {
-	g, ctx := errgroup.WithContext(ctx)
-	results := make([]*Partner, len(ids))
-	for i, id := range ids {
-		g.Go(func() error {
-			p, err := fetch(ctx, id)
-			if err != nil {
-				return err
-			}
-			results[i] = p
-			return nil
-		})
-	}
-	if err := g.Wait(); err != nil {
-		return nil, err
-	}
-	return results, nil
+  g, ctx := errgroup.WithContext(ctx)
+  results := make([]*Partner, len(ids))
+  for i, id := range ids {
+    g.Go(func() error {
+      p, err := fetch(ctx, id)
+      if err != nil {
+        return err
+      }
+      results[i] = p
+      return nil
+    })
+  }
+  if err := g.Wait(); err != nil {
+    return nil, err
+  }
+  return results, nil
 }
 ```
 
@@ -249,42 +260,44 @@ func FetchAll(ctx context.Context, ids []string) ([]*Partner, error) {
 **How to detect it:** For every `go func() {` literal (not calling a named, documented function), read the closure body. If it does I/O, can return an error, or exceeds a handful of lines, it likely deserves to be a named function with the ownership/error-handling patterns above.
 
 **Example violation:**
+
 ```go
 go func() {
-	resp, err := http.Get(url)
-	if err != nil {
-		return // silently discarded
-	}
-	defer resp.Body.Close()
-	data, _ := io.ReadAll(resp.Body) // error also discarded
-	cache.Set(url, data)
+  resp, err := http.Get(url)
+  if err != nil {
+    return // silently discarded
+  }
+  defer resp.Body.Close()
+  data, _ := io.ReadAll(resp.Body) // error also discarded
+  cache.Set(url, data)
 }()
 ```
 
 **Corrected:**
+
 ```go
 g.Go(func() error {
-	return refreshCache(ctx, cache, url)
+  return refreshCache(ctx, cache, url)
 })
 
 // refreshCache is a named, independently testable, independently
 // documented function with real error handling.
 func refreshCache(ctx context.Context, cache *Cache, url string) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return fmt.Errorf("build request: %w", err)
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("fetch %s: %w", url, err)
-	}
-	defer resp.Body.Close()
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("read %s: %w", url, err)
-	}
-	cache.Set(url, data)
-	return nil
+  req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+  if err != nil {
+    return fmt.Errorf("build request: %w", err)
+  }
+  resp, err := http.DefaultClient.Do(req)
+  if err != nil {
+    return fmt.Errorf("fetch %s: %w", url, err)
+  }
+  defer resp.Body.Close()
+  data, err := io.ReadAll(resp.Body)
+  if err != nil {
+    return fmt.Errorf("read %s: %w", url, err)
+  }
+  cache.Set(url, data)
+  return nil
 }
 ```
 
@@ -298,14 +311,16 @@ func refreshCache(ctx context.Context, cache *Cache, url string) error {
 
 **What Google/Effective Go says:** Not covered in Google's guide directly; documented as [Uber: Channel Size is One or None](https://github.com/uber-go/guide/blob/master/style.md#channel-size-is-one-or-none) — "channels should usually have a size of one or be unbuffered... any other size must be subject to a high level of scrutiny."
 
-**How to detect it:** Grep `make(chan ` for a numeric capacity argument greater than 1. Each match needs a comment justifying the specific number, or should be reduced to 0 or 1.
+**How to detect it:** Grep for `make(chan` and inspect every call that passes a capacity. Flag literal capacities greater than 1 (`make(chan T, 64)`, `make(chan T, n)` where `n > 1`). Each match needs a comment justifying that specific size, or should become unbuffered (`make(chan T)`) or capacity 1 (`make(chan T, 1)`).
 
 **Example violation:**
+
 ```go
 results := make(chan Result, 64) // why 64? what happens at 65?
 ```
 
 **Corrected:**
+
 ```go
 results := make(chan Result) // unbuffered: producer blocks until consumer is ready
 // or, if a single pending result is a deliberate design choice:
@@ -325,20 +340,22 @@ results := make(chan Result, 1)
 **How to detect it:** Grep function signatures for `chan T` (bidirectional, no arrow). For each, read the body — if it only ranges/receives, the parameter should be `<-chan T`; if it only sends, `chan<- T`.
 
 **Example violation:**
+
 ```go
 func worker(jobs chan Job, results chan Result) {
-	for j := range jobs {
-		results <- process(j)
-	}
+  for j := range jobs {
+    results <- process(j)
+  }
 }
 ```
 
 **Corrected:**
+
 ```go
 func worker(jobs <-chan Job, results chan<- Result) {
-	for j := range jobs {
-		results <- process(j)
-	}
+  for j := range jobs {
+    results <- process(j)
+  }
 }
 ```
 
@@ -355,33 +372,36 @@ func worker(jobs <-chan Job, results chan<- Result) {
 **How to detect it:** Check the module's `go.mod` Go version directive. On `go 1.22`+, a manual `x := x` capture line immediately inside a `for` loop, before a `go func()` or closure that uses `x`, is now redundant. On `go 1.21` or earlier, its **absence** before a goroutine or closure that outlives the loop iteration is a real bug.
 
 **The pre-1.22 trap:**
+
 ```go
 // go.mod: go 1.21
 for _, job := range jobs {
-	go func() {
-		process(job) // BUG on Go <1.22: every goroutine may see the same, final job
-	}()
+  go func() {
+    process(job) // BUG on Go <1.22: every goroutine may see the same, final job
+  }()
 }
 ```
 
 **Pre-1.22 fix:**
+
 ```go
 // go.mod: go 1.21
 for _, job := range jobs {
-	job := job // capture a per-iteration copy
-	go func() {
-		process(job)
-	}()
+  job := job // capture a per-iteration copy
+  go func() {
+    process(job)
+  }()
 }
 ```
 
 **Go 1.22+ — safe without the capture line:**
+
 ```go
 // go.mod: go 1.22 or later
 for _, job := range jobs {
-	go func() {
-		process(job) // each iteration already has its own job
-	}()
+  go func() {
+    process(job) // each iteration already has its own job
+  }()
 }
 ```
 
@@ -398,41 +418,43 @@ for _, job := range jobs {
 **How to detect it:** Grep for `http.Get(`, `http.Post(`, `client.Do(`, and similar calls that return `(*http.Response, error)`. For each, confirm the response body is closed on every code path, including early returns after a non-2xx status check.
 
 **Example violation — body never closed if the status check returns early:**
+
 ```go
 func fetchPartner(ctx context.Context, url string) (*Partner, error) {
-	resp, err := http.Get(url)
-	if err != nil {
-		return nil, err
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status %d", resp.StatusCode) // leaks resp.Body
-	}
-	defer resp.Body.Close()
-	var p Partner
-	if err := json.NewDecoder(resp.Body).Decode(&p); err != nil {
-		return nil, err
-	}
-	return &p, nil
+  resp, err := http.Get(url)
+  if err != nil {
+    return nil, err
+  }
+  if resp.StatusCode != http.StatusOK {
+    return nil, fmt.Errorf("unexpected status %d", resp.StatusCode) // leaks resp.Body
+  }
+  defer resp.Body.Close()
+  var p Partner
+  if err := json.NewDecoder(resp.Body).Decode(&p); err != nil {
+    return nil, err
+  }
+  return &p, nil
 }
 ```
 
 **Corrected:**
+
 ```go
 func fetchPartner(ctx context.Context, url string) (*Partner, error) {
-	resp, err := http.Get(url)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
+  resp, err := http.Get(url)
+  if err != nil {
+    return nil, err
+  }
+  defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status %d", resp.StatusCode)
-	}
-	var p Partner
-	if err := json.NewDecoder(resp.Body).Decode(&p); err != nil {
-		return nil, err
-	}
-	return &p, nil
+  if resp.StatusCode != http.StatusOK {
+    return nil, fmt.Errorf("unexpected status %d", resp.StatusCode)
+  }
+  var p Partner
+  if err := json.NewDecoder(resp.Body).Decode(&p); err != nil {
+    return nil, err
+  }
+  return &p, nil
 }
 ```
 
@@ -449,29 +471,31 @@ func fetchPartner(ctx context.Context, url string) (*Partner, error) {
 **How to detect it:** For every exported type with mutating methods, check whether the type's internal synchronization (a mutex, channel-based serialization, or none at all) actually matches what the doc comment claims — this rule is about the implementation matching the contract, not just the contract existing.
 
 **Example violation — doc comment promises safety the implementation doesn't provide:**
+
 ```go
 // Cache is safe for concurrent use.
 type Cache struct {
-	data map[string]string // no mutex — the comment is not true
+  data map[string]string // no mutex — the comment is not true
 }
 
 func (c *Cache) Set(k, v string) {
-	c.data[k] = v // concurrent Set calls race
+  c.data[k] = v // concurrent Set calls race
 }
 ```
 
 **Corrected:**
+
 ```go
 // Cache is safe for concurrent use.
 type Cache struct {
-	mu   sync.Mutex
-	data map[string]string
+  mu   sync.Mutex
+  data map[string]string
 }
 
 func (c *Cache) Set(k, v string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.data[k] = v
+  c.mu.Lock()
+  defer c.mu.Unlock()
+  c.data[k] = v
 }
 ```
 
@@ -488,26 +512,28 @@ func (c *Cache) Set(k, v string) {
 **How to detect it:** For every `mu.Lock()` call, check that `defer mu.Unlock()` appears on the next line, not scattered before each return path.
 
 **Example violation:**
+
 ```go
 func (c *Cache) Get(k string) (string, bool) {
-	c.mu.Lock()
-	v, ok := c.data[k]
-	if !ok {
-		c.mu.Unlock() // easy to forget on a new return path
-		return "", false
-	}
-	c.mu.Unlock()
-	return v, true
+  c.mu.Lock()
+  v, ok := c.data[k]
+  if !ok {
+    c.mu.Unlock() // easy to forget on a new return path
+    return "", false
+  }
+  c.mu.Unlock()
+  return v, true
 }
 ```
 
 **Corrected:**
+
 ```go
 func (c *Cache) Get(k string) (string, bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	v, ok := c.data[k]
-	return v, ok
+  c.mu.Lock()
+  defer c.mu.Unlock()
+  v, ok := c.data[k]
+  return v, ok
 }
 ```
 
@@ -523,7 +549,7 @@ func (c *Cache) Get(k string) (string, bool) {
 2. Grep `func init()` bodies for `go func`/`go \w+(` — flag any goroutine spawned from `init()`.
 3. For every struct with a `sync.Mutex`/`sync.RWMutex` field, confirm it's unexported, not embedded, and the containing type is never passed/returned by value (`govet`'s `copylocks` catches the value-copy case automatically).
 4. Look for hand-rolled `WaitGroup` + shared-error-variable patterns — suggest `errgroup`.
-5. Grep `make(chan ` for capacity arguments greater than 1 without a justifying comment.
+5. Grep `make(chan` for capacity arguments greater than 1 without a justifying comment.
 6. Grep function/method signatures for bidirectional `chan T` parameters — check the body for read-only or write-only usage.
 7. Check `go.mod`'s Go version; for `for range` loops feeding a `go func()` or closure, verify capture-line correctness per the target Go version (`copyloopvar` covers this in CI).
 8. Grep `http.Get(`, `http.Post(`, `client.Do(` — verify `resp.Body.Close()` is deferred immediately, before any early return (`bodyclose` covers this in CI, except in `_test.go`).
