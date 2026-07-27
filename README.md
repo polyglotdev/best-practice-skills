@@ -1,5 +1,7 @@
 # best-practice-skills
 
+[![skills.sh](https://skills.sh/b/polyglotdev/best-practice-skills)](https://skills.sh/polyglotdev/best-practice-skills)
+
 Exhaustive, Airbnb-depth **Agent Skills** for writing and reviewing
 JavaScript, TypeScript, React, Go, Java, Kotlin, Ruby, Python, and
 Terraform. Compatible with **Claude Code**, **Cursor** (chat + Agent
