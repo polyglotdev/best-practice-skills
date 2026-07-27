@@ -1,0 +1,52 @@
+<?xml version="1.0"?>
+<!DOCTYPE suppressions PUBLIC
+          "-//Checkstyle//DTD SuppressionFilter Configuration 1.2//EN"
+          "https://checkstyle.org/dtds/suppressions_1_2.dtd">
+
+<!--
+    File-level Checkstyle suppressions for the `best-practice-java` skill's
+    shipped configuration.
+
+    POLICY (skill chapter 38)
+
+    Prefer a narrowly scoped annotation at the declaration over an entry here:
+
+        @SuppressWarnings("checkstyle:AbbreviationAsWordInName") // JNI naming
+        native int readFD(int fd);
+
+    An entry in this file is appropriate only for code you do not control the
+    source shape of: generated sources, vendored third-party code, and files
+    whose conventions are dictated by an external tool.
+
+    Every entry must name a specific `checks` pattern. A suppression with no
+    `checks` attribute disables everything for those files and is never
+    acceptable.
+-->
+
+<suppressions>
+
+  <!-- Generated sources follow their generator's conventions, not ours. -->
+  <suppress files="[\\/](generated|generated-sources)[\\/]" checks="."/>
+  <suppress files=".*[\\/]build[\\/].*" checks="."/>
+  <suppress files=".*[\\/]target[\\/]generated.*" checks="."/>
+
+  <!-- Protobuf, gRPC, MapStruct, and OpenAPI stubs. -->
+  <suppress files=".*(Proto|OuterClass|Grpc)\.java$" checks="."/>
+  <suppress files=".*MapperImpl\.java$" checks="."/>
+
+  <!--
+      Tests: Javadoc is not required on test classes or test methods. The
+      behaviour under test is documented by the test name and @DisplayName
+      (skill chapter 31). Everything else still applies to test sources.
+  -->
+  <suppress files="[\\/]src[\\/]test[\\/]"
+            checks="MissingJavadocType|MissingJavadocMethod|JavadocMethod|SummaryJavadoc"/>
+
+  <!--
+      package-info.java exists to carry package Javadoc and package-level
+      annotations such as JSpecify's @NullMarked (skill chapter 25). It has
+      no type to document beyond the package itself.
+  -->
+  <suppress files="package-info\.java$" checks="MissingJavadocType"/>
+
+</suppressions>
