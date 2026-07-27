@@ -1,0 +1,83 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+# Go source: tabs, no trailing whitespace (gofmt requirement)
+[*.go]
+indent_style = tab
+indent_size = 4
+
+# Go modules and workspace files
+[{go.mod,go.sum,go.work,go.work.sum}]
+indent_style = tab
+indent_size = 4
+
+# Java - Google Java Style §4.2 block indent is +2 spaces (not 4),
+# continuation indent is +4, and §4.4 sets the column limit at 100.
+# google-java-format owns all of this; these keys only stop an editor
+# from fighting it before Spotless runs.
+[*.java]
+indent_style = space
+indent_size = 2
+max_line_length = 100
+
+# Kotlin - the Android Kotlin style guide states "the indent increases by
+# four spaces", and ktlint defaults to the same. This deliberately differs
+# from the 2-space default above and from Java's +2. ktlint reads the
+# ktlint_* and ij_kotlin_* keys below directly.
+[*.{kt,kts}]
+indent_style = space
+indent_size = 4
+max_line_length = 100
+ktlint_code_style = intellij_idea
+ktlint_standard_no-wildcard-imports = enabled
+ktlint_standard_filename = enabled
+ij_kotlin_allow_trailing_comma = true
+ij_kotlin_allow_trailing_comma_on_call_site = true
+ij_kotlin_name_count_to_use_star_import = 2147483647
+ij_kotlin_name_count_to_use_star_import_for_members = 2147483647
+
+# Python - house style via ruff.toml (indent-width = 2, line-length = 88).
+# This deliberately overrides Google pyguide §3.4 / PEP 8's 4-space indent.
+# ruff format owns layout; these keys stop editors from fighting it.
+[*.py]
+indent_style = space
+indent_size = 2
+max_line_length = 88
+
+# Makefiles require tabs
+[{Makefile,*.mk}]
+indent_style = tab
+indent_size = 4
+
+# YAML - 2-space indent, no tabs
+[*.{yml,yaml}]
+indent_style = space
+indent_size = 2
+
+# Ruby - rubystyle.guide and RuboCop default to 2-space indent and
+# a 100-column soft limit. Style/StringLiterals prefers single quotes.
+[*.{rb,rake,gemspec}]
+indent_style = space
+indent_size = 2
+max_line_length = 100
+
+[{Rakefile,Gemfile,*.gemspec}]
+indent_style = space
+indent_size = 2
+
+# Terraform - HashiCorp Style Guide: two-space indent; terraform fmt owns
+# alignment and most layout. These keys stop editors from fighting fmt.
+[*.{tf,tfvars}]
+indent_style = space
+indent_size = 2
+
+# Markdown - allow trailing whitespace (line breaks)
+[*.md]
+trim_trailing_whitespace = false
