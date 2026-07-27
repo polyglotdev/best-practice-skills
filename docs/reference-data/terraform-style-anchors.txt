@@ -1,0 +1,29 @@
+# Anchors from https://developer.hashicorp.com/terraform/language/style
+# Harvested from hashicorp/web-unified-docs terraform style.mdx headings (kebab-case).
+branching-strategy
+code-formatting
+code-style
+code-validation
+comments
+dynamic-resource-count
+file-names
+gitignore
+integration-and-unit-testing
+linting-and-static-code-analysis
+local-modules
+local-values
+module-repository-names
+module-structure
+multiple-environments
+next-steps
+outputs
+policy
+provider-aliasing
+repository-structure
+resource-naming
+resource-order
+secrets-management
+state-sharing
+variables
+version-pinning
+workflow-style
