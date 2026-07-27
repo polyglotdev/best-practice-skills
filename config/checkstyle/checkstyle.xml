@@ -1,0 +1,464 @@
+<?xml version="1.0"?>
+<!DOCTYPE module PUBLIC
+          "-//Checkstyle//DTD Checkstyle Configuration 1.3//EN"
+          "https://checkstyle.org/dtds/configuration_1_3.dtd">
+
+<!--
+    Checkstyle configuration for the `best-practice-java` skill.
+
+    Derived from the Checkstyle project's `google_checks.xml`
+    (https://github.com/checkstyle/checkstyle/blob/master/src/main/resources/google_checks.xml),
+    which encodes the Google Java Style Guide
+    (https://google.github.io/styleguide/javaguide.html).
+
+    ===========================================================================
+    WHAT THIS CONFIG DELIBERATELY DOES NOT CHECK
+    ===========================================================================
+    Every formatting concern is owned by google-java-format (run via Spotless).
+    Running the same rule in two tools produces duplicate findings, and worse,
+    findings a developer cannot fix without fighting the formatter. So all of
+    the following modules present in upstream google_checks.xml are removed
+    here on purpose:
+
+      Indentation, LineLength, FileTabCharacter, RegexpSingleline (trailing
+      whitespace), WhitespaceAfter, WhitespaceAround, WhitespaceBeforeEmptyBody,
+      NoWhitespaceBefore, NoWhitespaceBeforeCaseDefaultColon,
+      SingleSpaceSeparator, GenericWhitespace, MethodParamPad, ParenPad,
+      OperatorWrap, SeparatorWrap, LeftCurly, RightCurly, EmptyLineSeparator,
+      NoLineWrap, CommentsIndentation, AnnotationLocation,
+      JavadocContentLocation, JavadocLeadingAsteriskAlign,
+      JavadocMissingLeadingAsterisk, JavadocTagContinuationIndentation,
+      JavadocParagraph, RequireEmptyLineBeforeBlockTagGroup,
+      TextBlockGoogleStyleFormatting.
+
+    See chapter 1 (Formatting & Tooling) and chapter 38 (Static Analysis
+    Configuration) of the best-practice-java skill for the full rationale.
+
+    ===========================================================================
+    A NOTE ON MissingSwitchDefault AND EXHAUSTIVENESS
+    ===========================================================================
+    `MissingSwitchDefault` IS enabled, but its scope is narrower than its name
+    suggests, and the difference matters for Java 21 code.
+
+    Google Java Style section 4.8.4.3 requires every switch to be *exhaustive*.
+    It states that a switch is exhaustive "if it has a `default` label, but also
+    for example if the value being switched on is an enum and every value of the
+    enum is matched by a switch label." A `default` label is therefore one route
+    to exhaustiveness, not the only one.
+
+    Per the check's own documentation, `MissingSwitchDefault`:
+      - does NOT validate switch *expressions* (javac already proves those
+        exhaustive), and
+      - does NOT validate switch statements using pattern or null labels
+        (javac proves those exhaustive too).
+
+    So it does not fight pattern switches over `sealed` hierarchies, which is
+    the idiom chapters 13, 14, and 23 teach. What it does still flag is an
+    old-style colon-form statement switch over an enum that already matches
+    every constant. That is the one place the check and this skill disagree:
+    adding a `default` there converts what should become a compile error when a
+    new enum constant is introduced into a silent runtime fallthrough.
+
+    The resolution is to write that switch as a switch *expression* with arrow
+    labels, which chapter 23 requires anyway and which the check exempts. Where
+    an old-style exhaustive enum switch genuinely must stay, suppress it at the
+    declaration with a reason:
+
+        @SuppressWarnings("checkstyle:MissingSwitchDefault") // exhaustive; a
+        // new constant must break the build here rather than fall through
+
+    `FallThrough` below still catches the classic old-style switch bug.
+
+    ===========================================================================
+    SUPPRESSION POLICY
+    ===========================================================================
+    Suppress with a narrowly scoped annotation and a comment explaining why:
+
+        @SuppressWarnings("checkstyle:AbbreviationAsWordInName") // JNI naming
+        native int readFD(int fd);
+
+    File-level suppressions go in `checkstyle-suppressions.xml` next to this
+    file. Never suppress at the Checker level. Never suppress without a reason.
+-->
+
+<module name="Checker">
+
+  <property name="charset" value="UTF-8"/>
+
+  <!-- Fail the build by default. Override with -Dcheckstyle.severity=warning
+       during an incremental migration of an existing codebase. -->
+  <property name="severity" value="${checkstyle.severity}" default="error"/>
+
+  <property name="fileExtensions" value="java, properties, xml"/>
+
+  <!-- module-info.java has its own grammar and its own conventions. -->
+  <module name="BeforeExecutionExclusionFileFilter">
+    <property name="fileNamePattern" value="module\-info\.java$"/>
+  </module>
+
+  <!-- Honours @SuppressWarnings("checkstyle:CheckName") on declarations. -->
+  <module name="SuppressWarningsFilter"/>
+
+  <!-- Optional file-based suppressions; absent file is not an error. -->
+  <module name="SuppressionFilter">
+    <property name="file" value="${checkstyle.suppressions.file}"
+              default="config/checkstyle/checkstyle-suppressions.xml"/>
+    <property name="optional" value="true"/>
+  </module>
+
+  <module name="NewlineAtEndOfFile"/>
+
+  <module name="TreeWalker">
+
+    <!-- Required for SuppressWarningsFilter above to see the annotations. -->
+    <module name="SuppressWarningsHolder"/>
+
+    <!-- =================================================================
+         Source file structure  (Google Java Style sections 2 and 3)
+         Skill chapter 2.
+         ================================================================= -->
+
+    <!-- section 2.1: file name matches the top-level class name -->
+    <module name="OuterTypeFilename"/>
+
+    <!-- section 3.4.1: exactly one top-level class per file -->
+    <module name="OneTopLevelClass"/>
+
+    <!-- section 3.3.1: no wildcard imports -->
+    <module name="AvoidStarImport"/>
+
+    <!-- section 3.3.3: static group first, then non-static, each ASCII-sorted -->
+    <module name="CustomImportOrder">
+      <property name="sortImportsInGroupAlphabetically" value="true"/>
+      <property name="separateLineBetweenGroups" value="true"/>
+      <property name="customImportOrderRules" value="STATIC###THIRD_PARTY_PACKAGE"/>
+    </module>
+
+    <!-- section 2.3.2: prefer special escape sequences to octal/Unicode escapes -->
+    <module name="IllegalTokenText">
+      <property name="tokens" value="STRING_LITERAL, CHAR_LITERAL, TEXT_BLOCK_CONTENT"/>
+      <property name="format"
+                value="\\u00(08|09|0(a|A)|0(c|C)|0(d|D)|20|22|27|5(C|c))|\\(0(10|11|12|14|15|40|42|47)|134)"/>
+      <property name="message"
+                value="Consider using special escape sequence instead of octal value or Unicode escaped value."/>
+    </module>
+
+    <!-- section 2.3.3: non-ASCII characters -->
+    <module name="AvoidEscapedUnicodeCharacters">
+      <property name="allowEscapesForControlCharacters" value="true"/>
+      <property name="allowByTailComment" value="true"/>
+      <property name="allowNonPrintableEscapes" value="true"/>
+    </module>
+
+    <!-- section 3.4.2.1: overloads are never split by another member -->
+    <module name="OverloadMethodsDeclarationOrder"/>
+
+    <!-- constructors are declared as a contiguous group -->
+    <module name="ConstructorsDeclarationGrouping"/>
+
+    <!-- =================================================================
+         Naming  (Google Java Style section 5)
+         Skill chapter 3.
+         ================================================================= -->
+
+    <module name="PackageName">
+      <property name="format" value="^[a-z]+(\.[a-z][a-z0-9]*)*$"/>
+      <message key="name.invalidPattern"
+               value="Package name ''{0}'' must match pattern ''{1}''."/>
+    </module>
+
+    <module name="TypeName">
+      <property name="format" value="^[A-Z][a-zA-Z0-9]*(?:[0-9](?:_[0-9]+)*)?$"/>
+      <property name="tokens" value="CLASS_DEF"/>
+      <message key="name.invalidPattern"
+               value="Type name ''{0}'' must match pattern ''{1}''."/>
+    </module>
+
+    <!-- Underscores are permitted in JUnit test method names (section 5.2.3). -->
+    <module name="MethodName">
+      <property name="format"
+                value="^(?![a-z]$)(?![a-z][A-Z])[a-z][a-z0-9]*(?:[A-Z][a-z0-9]*)*(?:_[0-9]+)*$"/>
+      <message key="name.invalidPattern"
+               value="Method name ''{0}'' must match pattern ''{1}''."/>
+    </module>
+
+    <!-- section 5.2.5: non-constant fields are lowerCamelCase, no m/s/k prefixes -->
+    <module name="GoogleNonConstantFieldName"/>
+
+    <module name="ParameterName">
+      <property name="format" value="^[a-z]([a-z0-9][a-zA-Z0-9]*)?$"/>
+      <message key="name.invalidPattern"
+               value="Parameter name ''{0}'' must match pattern ''{1}''."/>
+    </module>
+
+    <!-- section 5.2.9: `_` is permitted for unnamed variables and parameters -->
+    <module name="LambdaParameterName">
+      <property name="format" value="^(_|[a-z]([a-z0-9][a-zA-Z0-9]*)?)$"/>
+      <message key="name.invalidPattern"
+               value="Lambda parameter name ''{0}'' must match pattern ''{1}''."/>
+    </module>
+
+    <module name="CatchParameterName">
+      <property name="format" value="^(_|[a-z]([a-z0-9][a-zA-Z0-9]*)?)$"/>
+      <message key="name.invalidPattern"
+               value="Catch parameter name ''{0}'' must match pattern ''{1}''."/>
+    </module>
+
+    <module name="LocalVariableName">
+      <property name="format" value="^(_|[a-z]([a-z0-9][a-zA-Z0-9]*)?)$"/>
+      <message key="name.invalidPattern"
+               value="Local variable name ''{0}'' must match pattern ''{1}''."/>
+    </module>
+
+    <module name="LocalFinalVariableName">
+      <property name="format" value="^(_|[a-z]([a-z0-9][a-zA-Z0-9]*)?)$"/>
+      <property name="tokens" value="VARIABLE_DEF, PARAMETER_DEF, RESOURCE"/>
+      <message key="name.invalidPattern"
+               value="Local final variable name ''{0}'' must match pattern ''{1}''."/>
+    </module>
+
+    <module name="PatternVariableName">
+      <property name="format" value="^(_|[a-z]([a-z0-9][a-zA-Z0-9]*)?)$"/>
+      <message key="name.invalidPattern"
+               value="Pattern variable name ''{0}'' must match pattern ''{1}''."/>
+    </module>
+
+    <module name="RecordComponentName">
+      <property name="format" value="^[a-z]([a-z0-9][a-zA-Z0-9]*)?$"/>
+      <message key="name.invalidPattern"
+               value="Record component name ''{0}'' must match pattern ''{1}''."/>
+    </module>
+
+    <!-- section 5.2.8: a single capital letter optionally followed by a
+         numeral, or a class-style name followed by a capital T -->
+    <module name="ClassTypeParameterName">
+      <property name="format" value="(^[A-Z][0-9]?$)|(^[A-Z]T$)|(^([A-Z][a-z0-9]+)+T$)"/>
+      <message key="name.invalidPattern"
+               value="Class type name ''{0}'' must match pattern ''{1}''."/>
+    </module>
+
+    <module name="RecordTypeParameterName">
+      <property name="format" value="(^[A-Z][0-9]?$)|(^[A-Z]T$)|(^([A-Z][a-z0-9]+)+T$)"/>
+      <message key="name.invalidPattern"
+               value="Record type name ''{0}'' must match pattern ''{1}''."/>
+    </module>
+
+    <module name="MethodTypeParameterName">
+      <property name="format" value="(^[A-Z][0-9]?$)|(^[A-Z]T$)|(^([A-Z][a-z0-9]+)+T$)"/>
+      <message key="name.invalidPattern"
+               value="Method type name ''{0}'' must match pattern ''{1}''."/>
+    </module>
+
+    <module name="InterfaceTypeParameterName">
+      <property name="format" value="(^[A-Z][0-9]?$)|(^[A-Z]T$)|(^([A-Z][a-z0-9]+)+T$)"/>
+      <message key="name.invalidPattern"
+               value="Interface type name ''{0}'' must match pattern ''{1}''."/>
+    </module>
+
+    <!-- section 5.3: camel case algorithm — XmlHttpRequest, not XMLHTTPRequest -->
+    <module name="AbbreviationAsWordInName">
+      <property name="ignoreFinal" value="false"/>
+      <property name="allowedAbbreviationLength" value="0"/>
+      <property name="tokens"
+                value="CLASS_DEF, INTERFACE_DEF, ENUM_DEF, ANNOTATION_DEF, ANNOTATION_FIELD_DEF,
+                       PARAMETER_DEF, VARIABLE_DEF, METHOD_DEF, PATTERN_VARIABLE_DEF, RECORD_DEF,
+                       RECORD_COMPONENT_DEF"/>
+    </module>
+
+    <!-- =================================================================
+         Programming practices  (Google Java Style section 6)
+         Skill chapters 6, 7, 23.
+         ================================================================= -->
+
+    <!-- section 4.8.7: canonical modifier order -->
+    <module name="ModifierOrder"/>
+
+    <!-- section 6.4: do not override Object.finalize -->
+    <module name="NoFinalizer"/>
+
+    <!-- section 4.1.1: braces are used even where optional -->
+    <module name="NeedBraces">
+      <property name="tokens"
+                value="LITERAL_DO, LITERAL_ELSE, LITERAL_FOR, LITERAL_IF, LITERAL_WHILE"/>
+    </module>
+
+    <!-- section 6.2: a caught exception is never silently ignored; an empty
+         catch block must carry a comment explaining why that is correct -->
+    <module name="EmptyCatchBlock">
+      <property name="commentFormat" value="\w+"/>
+    </module>
+
+    <!-- section 4.3 -->
+    <module name="OneStatementPerLine"/>
+
+    <!-- section 4.8.2.1 -->
+    <module name="MultipleVariableDeclarations"/>
+
+    <!-- section 4.8.3.2: no C-style `String args[]` declarations -->
+    <module name="ArrayTypeStyle"/>
+
+    <!-- section 4.8.4.2: old-style switch fall-through must be commented -->
+    <module name="FallThrough"/>
+
+    <!-- section 4.8.4.3: exhaustiveness. Exempts switch expressions and
+         pattern/null-label switches, which javac already proves exhaustive.
+         See the header note for the one enum case where it disagrees with
+         chapter 23. -->
+    <module name="MissingSwitchDefault"/>
+
+    <!-- section 4.8.8: long literals use uppercase L -->
+    <module name="UpperEll"/>
+
+    <!-- section 4.8.2.2: declare locals close to first use -->
+    <module name="VariableDeclarationUsageDistance"/>
+
+    <!-- Java 21: a record accessor that is explicitly declared is an override -->
+    <module name="MissingOverrideOnRecordAccessor"/>
+
+    <!-- section 4.8.6.2: TODO comments are all-caps and followed by a colon -->
+    <module name="TodoComment">
+      <property name="id" value="TodoFormat"/>
+      <property name="format" value="^[ \t]*(?!TODO:)(?i:TODO)\b:?"/>
+      <message key="todo.match"
+               value="''TODO:'' must be written in all caps and followed by a colon."/>
+    </module>
+
+    <!-- =================================================================
+         Javadoc  (Google Java Style section 7)
+         Skill chapter 4. Formatting-only Javadoc checks are omitted; these
+         are the ones google-java-format cannot decide for you.
+         ================================================================= -->
+
+    <module name="InvalidJavadocPosition"/>
+
+    <module name="JavadocMethod">
+      <property name="accessModifiers" value="public"/>
+      <property name="allowMissingParamTags" value="true"/>
+      <property name="allowMissingReturnTag" value="true"/>
+      <property name="allowedAnnotations" value="Override, Test"/>
+      <property name="tokens" value="METHOD_DEF, CTOR_DEF, ANNOTATION_FIELD_DEF, COMPACT_CTOR_DEF"/>
+    </module>
+
+    <!-- section 7.3: Javadoc present for every visible member, with the
+         self-explanatory and override exceptions of 7.3.1 and 7.3.2 -->
+    <module name="MissingJavadocMethod">
+      <property name="scope" value="protected"/>
+      <property name="allowMissingPropertyJavadoc" value="true"/>
+      <property name="allowedAnnotations" value="Override, Test"/>
+      <property name="tokens" value="METHOD_DEF, CTOR_DEF, ANNOTATION_FIELD_DEF, COMPACT_CTOR_DEF"/>
+    </module>
+
+    <module name="MissingJavadocType">
+      <property name="scope" value="protected"/>
+      <property name="tokens"
+                value="CLASS_DEF, INTERFACE_DEF, ENUM_DEF, RECORD_DEF, ANNOTATION_DEF"/>
+      <property name="excludeScope" value="nothing"/>
+    </module>
+
+    <!-- section 7.1.3: @param, @return, @throws, @deprecated, in that order,
+         and never with an empty description -->
+    <module name="AtclauseOrder">
+      <property name="tagOrder" value="@param, @return, @throws, @deprecated"/>
+      <property name="target"
+                value="CLASS_DEF, INTERFACE_DEF, ENUM_DEF, METHOD_DEF, CTOR_DEF,
+                       VARIABLE_DEF, RECORD_DEF, COMPACT_CTOR_DEF"/>
+    </module>
+
+    <module name="NonEmptyAtclauseDescription"/>
+
+    <!-- section 7.2: the summary is a fragment, not a sentence. Rejects
+         "This method returns ...", "A {@code Foo} is a ...", and a
+         lowercase opening. -->
+    <module name="SummaryJavadoc">
+      <property name="forbiddenSummaryFragments"
+                value="^@return the *|^This method returns |^A [{]@code [a-zA-Z0-9]+[}]( is a )|^[a-z]"/>
+    </module>
+
+    <!-- section 7.1.1: the single-line form is only valid without block tags -->
+    <module name="SingleLineJavadoc"/>
+
+    <!-- =================================================================
+         BEYOND GOOGLE'S OWN RULESET
+
+         Google's guide is deliberately silent on most design questions, so
+         upstream google_checks.xml is silent too. The checks below are NOT in
+         google_checks.xml. Each one mechanically enforces a rule the skill
+         states from Effective Java or the JLS, so that those chapters can
+         carry an honest `> Enforced by:` callout instead of a bare opinion.
+         The chapter each check backs is named alongside it.
+         ================================================================= -->
+
+    <!-- Naming: google_checks covers non-constant fields via
+         GoogleNonConstantFieldName but has no constant rule. Chapter 3. -->
+    <module name="ConstantName"/>
+
+    <!-- Equality contracts. Chapter 10. -->
+    <module name="EqualsHashCode"/>
+    <module name="CovariantEquals"/>
+    <module name="EqualsAvoidNull"/>
+    <module name="StringLiteralEquality"/>
+
+    <!-- Object creation and class design. Chapters 8 and 11. -->
+    <module name="FinalClass"/>
+    <module name="HideUtilityClassConstructor"/>
+    <module name="IllegalInstantiation"/>
+    <module name="InterfaceIsType"/>
+    <module name="VisibilityModifier"/>
+
+    <!-- Resource and finalizer discipline. Chapters 7 and 9. -->
+    <module name="SuperFinalize"/>
+    <module name="UnnecessarySemicolonInTryWithResources"/>
+
+    <!-- Exception discipline: never catch or declare Throwable, Error, or
+         bare RuntimeException across an API boundary. Chapter 24. -->
+    <module name="IllegalCatch"/>
+    <module name="IllegalThrows"/>
+
+    <!-- Program to the interface, not the implementation. Chapter 20. -->
+    <module name="IllegalType"/>
+
+    <!-- Imports. Chapter 2. -->
+    <module name="PackageDeclaration"/>
+    <module name="UnusedImports"/>
+    <module name="IllegalImport"/>
+
+    <!-- Declaration hygiene. Chapters 6 and 22. -->
+    <module name="ExplicitInitialization"/>
+    <module name="RedundantModifier"/>
+    <module name="ParameterAssignment"/>
+    <module name="UnusedLocalVariable"/>
+    <module name="ModifiedControlVariable"/>
+
+    <!-- Long parameter lists are a design smell; chapter 22 gives the three
+         fixes (split the method, parameter object, builder). Overrides are
+         exempt because the signature is not the author's to change. -->
+    <module name="ParameterNumber">
+      <property name="max" value="7"/>
+      <property name="ignoreOverriddenMethods" value="true"/>
+    </module>
+
+    <!-- Shadowing a field with a parameter or local. Constructor parameters
+         and setter parameters are the idiomatic exception. Chapter 6. -->
+    <module name="HiddenField">
+      <property name="ignoreConstructorParameter" value="true"/>
+      <property name="ignoreSetter" value="true"/>
+      <property name="ignoreAbstractMethods" value="true"/>
+    </module>
+
+    <!-- Control flow and modern switch. Chapter 23.
+         MissingSwitchDefault stays absent for the reason given in the header;
+         these are the checks that push toward exhaustive pattern switches
+         rather than away from them. -->
+    <module name="InnerAssignment"/>
+    <module name="SimplifyBooleanExpression"/>
+    <module name="SimplifyBooleanReturn"/>
+    <module name="UseEnhancedSwitch"/>
+    <module name="MissingNullCaseInSwitch"/>
+    <module name="WhenShouldBeUsed"/>
+
+    <!-- Redundant null check before instanceof; pattern matching makes this
+         even more common. Chapter 25. -->
+    <module name="UnnecessaryNullCheckWithInstanceOf"/>
+
+  </module>
+</module>
