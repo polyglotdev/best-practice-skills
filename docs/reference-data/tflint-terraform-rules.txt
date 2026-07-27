@@ -1,0 +1,19 @@
+# TFLint ruleset-terraform rule names (terraform-linters/tflint-ruleset-terraform).
+# Used to validate `> Enforced by:` callouts in best-practice-terraform.
+# Also allow the bare tool names terraform fmt / terraform validate / terraform test / tflint.
+terraform_comment_syntax
+terraform_deprecated_index
+terraform_deprecated_interpolation
+terraform_documented_outputs
+terraform_documented_variables
+terraform_empty_list_equality
+terraform_module_pinned_source
+terraform_module_version
+terraform_naming_convention
+terraform_required_providers
+terraform_required_version
+terraform_standard_module_structure
+terraform_typed_variables
+terraform_unused_declarations
+terraform_unused_required_providers
+terraform_workspace_remote
