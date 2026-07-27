@@ -1,0 +1,518 @@
+# detekt configuration for the `best-practice-kotlin` skill.
+#
+# Targets detekt 1.23.x (latest stable at time of writing: 1.23.8).
+#
+# ---------------------------------------------------------------------------
+# HOW TO USE THIS FILE
+# ---------------------------------------------------------------------------
+#
+# This is an OVERRIDE config, not a standalone one. Apply it on top of detekt's
+# own defaults so you inherit every rule you have not explicitly tuned:
+#
+#     // build.gradle.kts
+#     detekt {
+#         buildUponDefaultConfig = true
+#         config.setFrom(files("$rootDir/config/detekt/detekt.yml"))
+#         baseline = file("$rootDir/config/detekt/baseline.xml")  // legacy code only
+#     }
+#
+# Several rules below require TYPE RESOLUTION and are silently inert without
+# it. Wire the typed task or they will never fire:
+#
+#     tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
+#         jvmTarget = "21"
+#     }
+#     // and run `detektMain` / `detektTest`, which have the compile classpath
+#
+# Rules marked "(needs type resolution)" below are the ones this matters for.
+#
+# ---------------------------------------------------------------------------
+# DIVISION OF LABOUR
+# ---------------------------------------------------------------------------
+#
+#   ktlint    -> formatting: indent, wrapping, blank lines, import order.
+#   detekt    -> semantic smells, complexity, and correctness.
+#   kotlinc   -> nullability, exhaustiveness, unreachable code.
+#
+# detekt's own `formatting` ruleset (a ktlint wrapper) is deliberately NOT
+# enabled here. Running ktlint twice through two front ends produces duplicate
+# findings that disagree about severity. See skill chapters 1 and 47.
+#
+# ---------------------------------------------------------------------------
+# SUPPRESSION POLICY
+# ---------------------------------------------------------------------------
+#
+#   @Suppress("SwallowedException") // rethrown as DomainError below
+#
+# Always name the specific rule. Always give a reason. Never suppress at file
+# or module level. A baseline.xml is for adopting detekt on an existing
+# codebase, not for parking new violations.
+
+build:
+  # Any finding fails the build. Use a baseline for legacy code instead of
+  # raising this number.
+  maxIssues: 0
+  excludeCorrectable: false
+
+config:
+  # Fail fast if this file names a rule or property that does not exist,
+  # rather than silently ignoring the typo.
+  validation: true
+  warningsAsErrors: true
+
+# ===========================================================================
+# POTENTIAL BUGS
+# The null-safety rules here are what make the skill's "`!!` is banned"
+# position mechanically enforceable. Chapter 6.
+# ===========================================================================
+potential-bugs:
+  active: true
+
+  # --- cited by a chapter but active: false in detekt defaults ---
+  # ch 7
+  CastToNullableType:
+    active: true
+  # ch 7, 20
+  DontDowncastCollectionTypes:
+    active: true
+  # ch 7
+  ImplicitUnitReturnType:
+    active: true
+  # ch 2
+  MissingPackageDeclaration:
+    active: true
+
+  # THE `!!` BAN. Chapter 6.1. (needs type resolution)
+  UnsafeCallOnNullableType:
+    active: true
+
+  # `map[key]!!` — the most common disguised `!!`. Chapter 6, chapter 20.
+  MapGetWithNotNullAssertionOperator:
+    active: true
+
+  # A Java platform type escaping into Kotlin without an explicit type.
+  # Chapters 6 and 28. (needs type resolution)
+  HasPlatformType:
+    active: true
+
+  # `as` on a nullable, and redundant `?.` / `!!`. Chapters 6 and 7.
+  CastNullableToNonNullableType:
+    active: true
+  UnnecessaryNotNullOperator:
+    active: true
+  UnnecessarySafeCall:
+    active: true
+  UnnecessaryNotNullCheck:
+    active: true
+  UnsafeCast:
+    active: true
+
+  # `else` on a `when` over a sealed type or enum. This is the mechanical
+  # backing for chapters 13, 15, and 22: a new subtype must become a compile
+  # error, and an `else` silently swallows it. (needs type resolution)
+  ElseCaseInsteadOfExhaustiveWhen:
+    active: true
+
+  # Smart cast defeated by a mutable property. Chapter 6.
+  NullCheckOnMutableProperty:
+    active: true
+
+  # A read-only collection type backed by a mutable one. Chapters 20 and 25.
+  DoubleMutabilityForCollection:
+    active: true
+
+  # `lateinit` is legitimate for framework injection and almost nowhere else,
+  # so this is a warning to be justified rather than a hard failure.
+  # Chapter 6.
+  LateinitUsage:
+    active: true
+    excludes: ['**/test/**', '**/androidTest/**']
+
+  NullableToStringCall:
+    active: true
+  AvoidReferentialEquality:
+    active: true
+  ImplicitDefaultLocale:
+    active: true
+  IgnoredReturnValue:
+    active: true
+
+# ===========================================================================
+# COROUTINES
+# All nine of detekt's coroutine rules are on. Chapters 33 to 40.
+# ===========================================================================
+coroutines:
+  active: true
+
+  # No `GlobalScope`: no parent, no cancellation, guaranteed leak.
+  # Chapters 33 and 40.
+  GlobalCoroutineUsage:
+    active: true
+
+  # Hardcoded dispatchers make code untestable. Chapters 34 and 39.
+  InjectDispatcher:
+    active: true
+
+  # `Thread.sleep` inside a coroutine blocks the carrier thread.
+  # Chapter 40.
+  SleepInsteadOfDelay:
+    active: true
+
+  # Catching broadly around a suspend call swallows CancellationException and
+  # breaks structured concurrency. This is the single most important coroutine
+  # rule in the skill. Chapters 24, 35, and 40. (needs type resolution)
+  SuspendFunSwallowedCancellation:
+    active: true
+
+  # A suspend call in `finally` runs on a cancelled coroutine unless wrapped
+  # in NonCancellable. Chapter 35.
+  SuspendFunInFinallySection:
+    active: true
+
+  # `suspend fun` returning `Flow` is redundant. Chapter 36.
+  SuspendFunWithFlowReturnType:
+    active: true
+
+  SuspendFunWithCoroutineScopeReceiver:
+    active: true
+
+  # A `suspend` modifier on a function that never suspends. Chapter 40.
+  RedundantSuspendModifier:
+    active: true
+
+  # `launch` in a test without `runTest` produces a test that passes because
+  # nothing ran. Chapter 39.
+  CoroutineLaunchedInTestWithoutRunTest:
+    active: true
+
+# ===========================================================================
+# EXCEPTIONS
+# Chapter 24.
+# ===========================================================================
+exceptions:
+  active: true
+
+  # A caught exception that is neither handled nor chained.
+  SwallowedException:
+    active: true
+
+  TooGenericExceptionCaught:
+    active: true
+  TooGenericExceptionThrown:
+    active: true
+
+  ThrowingExceptionsWithoutMessageOrCause:
+    active: true
+  ThrowingExceptionFromFinally:
+    active: true
+  ReturnFromFinally:
+    active: true
+  RethrowCaughtException:
+    active: true
+  PrintStackTrace:
+    active: true
+  InstanceOfCheckForException:
+    active: true
+  ObjectExtendsThrowable:
+    active: true
+
+  # `TODO()` reaching production. Chapter 5.
+  NotImplementedDeclaration:
+    active: true
+
+# ===========================================================================
+# STYLE
+# Only the rules that back a stated skill rule. Formatting stays with ktlint.
+# ===========================================================================
+style:
+  active: true
+
+  # --- cited by a chapter but active: false in detekt defaults ---
+  # ch 19
+  AlsoCouldBeApply:
+    active: true
+  # ch 6
+  CanBeNonNullable:
+    active: true
+  # ch 2, 10
+  ClassOrdering:
+    active: true
+  # ch 11
+  DataClassContainsFunctions:
+    active: true
+  # ch 11, 23 — var components break the hash invariant
+  DataClassShouldBeImmutable:
+    active: true
+  # ch 20, 26
+  ExplicitCollectionElementAccessMethod:
+    active: true
+  # ch 8
+  ExpressionBodySyntax:
+    active: true
+  # ch 31 — no println
+  ForbiddenMethodCall:
+    active: true
+    methods:
+      - reason: 'use a logger, not stdout (chapter 31)'
+        value: 'kotlin.io.println'
+      - reason: 'use a logger, not stdout (chapter 31)'
+        value: 'kotlin.io.print'
+  # ch 47
+  ForbiddenSuppress:
+    active: true
+  # ch 19 — nested lambdas must name their parameter
+  MultilineLambdaItParameter:
+    active: true
+  # ch 21
+  MultilineRawStringIndentation:
+    active: true
+  # ch 6, 22
+  NullableBooleanCheck:
+    active: true
+  # ch 8
+  OptionalUnit:
+    active: true
+  # ch 21
+  StringShouldBeRawString:
+    active: true
+  # ch 21
+  TrimMultilineRawString:
+    active: true
+  # ch 6
+  UnnecessaryLet:
+    active: true
+  # ch 11
+  UseDataClass:
+    active: true
+  # ch 20
+  UseEmptyCounterpart:
+    active: true
+  # ch 21
+  UseIfEmptyOrIfBlank:
+    active: true
+  # ch 22
+  UseIfInsteadOfWhen:
+    active: true
+  # ch 20
+  UseSumOfInsteadOfFlatMapSize:
+    active: true
+
+  # Chapter 22: prefer `when` past a few branches, keep nesting shallow.
+  ReturnCount:
+    active: true
+    max: 3
+    excludeGuardClauses: true
+
+  # Chapter 8: a magic number is a missing named constant.
+  MagicNumber:
+    active: true
+    ignoreNumbers: ['-1', '0', '1', '2']
+    ignorePropertyDeclaration: true
+    ignoreCompanionObjectPropertyDeclaration: true
+    ignoreAnnotation: true
+    ignoreEnums: true
+    excludes: ['**/test/**']
+
+  # Chapter 5: TODO/FIXME must carry an owner or an issue reference.
+  ForbiddenComment:
+    active: true
+    comments:
+      - reason: 'TODO must reference an issue, e.g. TODO(PROJ-123):'
+        value: 'TODO:'
+      - reason: 'FIXME must reference an issue'
+        value: 'FIXME:'
+
+  # Chapter 2.
+  WildcardImport:
+    active: true
+
+  # Chapter 25: prefer `val`.
+  VarCouldBeVal:
+    active: true
+
+  # Chapter 24: `require`/`check`/`error` over hand-thrown exceptions.
+  UseCheckOrError:
+    active: true
+  UseRequire:
+    active: true
+  UseCheckNotNull:
+    active: true
+  UseRequireNotNull:
+    active: true
+
+  # Chapter 20: idiomatic stdlib over hand-rolled equivalents.
+  UseIsNullOrEmpty:
+    active: true
+  UseOrEmpty:
+    active: true
+  CollapsibleIfStatements:
+    active: true
+
+  # Chapter 21.
+  UnnecessaryFilter:
+    active: true
+
+  # Chapter 10: an inner class that never touches its outer instance and so
+  # should be a nested class without the hidden outer reference.
+  UnnecessaryInnerClass:
+    active: true
+
+  # Chapter 6: `?: return` and friends read better than a nested null check.
+  SafeCast:
+    active: true
+
+# ===========================================================================
+# COMPLEXITY
+# Thresholds are a design smell signal, not a hard architectural law.
+# Chapters 8 and 10.
+# ===========================================================================
+complexity:
+  active: true
+
+  # --- cited by a chapter but active: false in detekt defaults ---
+  # ch 10
+  ComplexInterface:
+    active: true
+  # ch 9, 22
+  LabeledExpression:
+    active: true
+  # ch 19 — the headline scope-function anti-pattern
+  NestedScopeFunctions:
+    active: true
+  # ch 19
+  ReplaceSafeCallChainWithRun:
+    active: true
+
+  LongParameterList:
+    active: true
+    functionThreshold: 6
+    constructorThreshold: 8       # DI constructors legitimately run longer
+    ignoreDefaultParameters: true
+    ignoreDataClasses: true
+    ignoreAnnotatedParameter: []
+
+  LongMethod:
+    active: true
+    threshold: 60
+
+  NestedBlockDepth:
+    active: true
+    threshold: 4
+
+  ComplexCondition:
+    active: true
+    threshold: 4
+
+  TooManyFunctions:
+    active: true
+    thresholdInFiles: 20
+    thresholdInClasses: 20
+    ignorePrivate: true
+    ignoreOverridden: true
+    excludes: ['**/test/**']
+
+# ===========================================================================
+# NAMING
+# Chapter 3. Backticked test names are explicitly allowed by the Android
+# Kotlin style guide, so the test-source pattern is deliberately permissive.
+# ===========================================================================
+naming:
+  active: true
+
+  # --- cited by a chapter but active: false in detekt defaults ---
+  # ch 3
+  NonBooleanPropertyPrefixedWithIs:
+    active: true
+
+  FunctionNaming:
+    active: true
+    functionPattern: '[a-z][a-zA-Z0-9]*'
+    excludes: ['**/test/**', '**/androidTest/**']
+
+  ClassNaming:
+    active: true
+  PackageNaming:
+    active: true
+  VariableNaming:
+    active: true
+
+  # A leading underscore is the documented convention for a backing property.
+  # Chapters 3 and 17.
+  MemberNameEqualsClassName:
+    active: true
+
+  ObjectPropertyNaming:
+    active: true
+  TopLevelPropertyNaming:
+    active: true
+
+  BooleanPropertyNaming:
+    active: true
+    allowedPattern: '^(is|has|are|should|can)'
+
+# ===========================================================================
+# PERFORMANCE
+# Chapter 20.
+# ===========================================================================
+performance:
+  active: true
+  CouldBeSequence:
+    active: true
+    threshold: 3
+  ForEachOnRange:
+    active: true
+  SpreadOperator:
+    active: true
+  UnnecessaryTemporaryInstantiation:
+    active: true
+  ArrayPrimitive:
+    active: true
+
+# ===========================================================================
+# COMMENTS
+# Chapter 4. KDoc presence is not machine-checkable in a useful way, so this
+# stays light; the skill states the rules and review enforces them.
+# ===========================================================================
+comments:
+  active: true
+
+  # --- cited by a chapter but active: false in detekt defaults ---
+  # ch 2
+  AbsentOrWrongFileLicense:
+    active: true
+  UndocumentedPublicClass:
+    active: false        # too noisy outside a published library
+  UndocumentedPublicFunction:
+    active: false        # enable deliberately for a library module
+  UndocumentedPublicProperty:
+    active: false
+  OutdatedDocumentation:
+    active: true
+  KDocReferencesNonPublicProperty:
+    active: true
+
+# ===========================================================================
+# EMPTY BLOCKS
+# Chapter 24: an empty catch is only acceptable with a comment saying why.
+# ===========================================================================
+empty-blocks:
+  active: true
+  EmptyCatchBlock:
+    active: true
+    allowedExceptionNameRegex: '_|(ignore|expected).*'
+  EmptyFunctionBlock:
+    active: true
+    ignoreOverridden: true
+
+# ===========================================================================
+# DOCUMENTED BY detekt BUT ABSENT FROM THE v1.23.8 DEFAULT CONFIG
+#
+# detekt.dev documents these, but they are not in the 1.23.8 default config,
+# so the docs site is ahead of the latest stable release. Chapters citing
+# them must treat them as Suggestion until the project moves to a detekt
+# version that ships them. Re-check on upgrade:
+#
+#   AbstractClassCanBeConcreteClass, ErrorUsageWithThrowable, MayBeConstant,
+#   MissingUseCall, RangeUntilInsteadOfRangeTo, RedundantVisibilityModifier,
+#   UnnecessaryFullyQualifiedName
+# ===========================================================================
