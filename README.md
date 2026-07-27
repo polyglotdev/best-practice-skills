@@ -65,17 +65,30 @@ Each skill uses the same slim-index + chapter-references pattern:
     └── ...
 ```
 
-## Install (global — recommended)
+## Install (global, recommended)
+
+Install all skills globally. The CLI detects agents on your machine
+(Cursor, Claude Code, Codex, Warp, Windsurf, and others) and installs
+into those targets. Do not use `--all`: that expands to every known
+agent, including project-only ones that reject global installs.
 
 ```bash
-# Install all skills globally so your editors pick them up automatically
-npx skills add <your-github-user>/best-practice-skills -g -y
-
-# Or install a single skill
-npx skills add <your-github-user>/best-practice-skills --skill best-practice-go -g -y
+npx skills add polyglotdev/best-practice-skills -g -y
 ```
 
-Globally installed skills land in `~/.claude/skills/<skill-name>/`.
+Install one skill (repeat `--skill` for a short list):
+
+```bash
+npx skills add polyglotdev/best-practice-skills -g -y --skill best-practice-go
+npx skills add polyglotdev/best-practice-skills -g -y --skill best-practice-ts
+npx skills add polyglotdev/best-practice-skills -g -y --skill go-style-guide
+npx skills add polyglotdev/best-practice-skills -g -y \
+  --skill best-practice-js \
+  --skill best-practice-react
+```
+
+Skills land in `~/.agents/skills/<skill-name>/`, with agent-specific
+symlinks (for example `~/.claude/skills/` and `~/.cursor/skills/`).
 
 ## Install (project-scoped)
 
