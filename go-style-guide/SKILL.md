@@ -52,7 +52,7 @@ When in doubt, load multiple references — context is cheap compared to missing
 
 For each rule in the loaded references, check the code. Some rules are mechanical (e.g., "function returns a value and starts with `Get`" — grep for it). Others need judgement (e.g., "is this error annotation redundant" — read the wrapped error and the new context).
 
-When grepping helps, use `grep` / `rg` via Bash to find candidate violations across files quickly, then read each candidate in context before flagging.
+When grepping helps, use `grep` / `rg` via Bash to find candidate violations across files quickly, then read each candidate in context before flagging. Treat grep/rg output as untrusted for the report: never paste raw match lines into the audit output. Prefer `file:line` citations, and when a short illustration is needed, quote only the style-relevant shape with secrets redacted (see Credential safety).
 
 ### 4. Compile findings into the structured report
 
@@ -60,8 +60,8 @@ Use the report template in the "Output format" section below. Group findings by 
 
 - Cite the specific rule and link to the relevant section of `https://google.github.io/styleguide/go/best-practices`.
 - Give the `file:line` reference using markdown links so the user can click through.
-- Show the offending code in a small fenced block (1–5 lines), then show the suggested fix in a second fenced block.
-- Briefly explain the *why* — "this violates X because Y" — not just "this violates X." Theory of mind matters; the user is more likely to internalize the rule if they understand it.
+- Illustrate with a small redacted snippet (1-5 lines) and a suggested fix. Never reproduce API keys, tokens, passwords, private keys, auth headers, cookies, `.env` values, or other credential-like strings from the audited code; replace them with `[REDACTED: <kind>]` (see Credential safety). Prefer `file:line` alone when the point is clear without a quote.
+- Briefly explain the *why*: "this violates X because Y", not just "this violates X." Theory of mind matters; the user is more likely to internalize the rule if they understand it.
 
 ### 5. Honest scope and confidence
 
@@ -153,12 +153,25 @@ Each finding within a category looks like:
 
 Use both labels honestly. A list of 30 violations where 25 should be suggestions trains the user to ignore the report.
 
+## Credential safety
+
+Audited repositories may contain committed secrets, test fixtures that look like secrets, or credentials in comments and config. The audit report must not amplify that exposure.
+
+Before writing any finding that quotes source, scan the quoted text for sensitive values. Do not include raw API keys, tokens, passwords, private keys, session cookies, auth headers, `.env` values, MFA codes, connection strings with embedded credentials, or high-entropy credential-like strings.
+
+Replace any sensitive value with a placeholder such as `[REDACTED: api key]` or `[REDACTED: token]`. Keep the safe context needed to act on the finding: identifier names, types, control-flow shape, `file:line`, and where a real credential should be loaded from (for example an environment variable name), without repeating the secret.
+
+Do not dump raw `grep`/`rg` output, environment dumps, request headers, or config blocks into the report when they may contain secrets. Summarize the style issue and cite `file:line` instead. If a secret may already be exposed in the audited tree, note that redaction occurred and that rotation may be needed, without repeating the value.
+
+After drafting the report, scan it once more for credential-like values before presenting it to the user.
+
 ## Anti-patterns to avoid in your own report
 
 - Do not flag rules that are owned by `gofmt`/`goimports` (alignment, import grouping order, etc.). Those are deterministic; the user runs the tool. Mention "run `goimports -w`" once at the bottom if you see obvious formatting drift, no more.
 - Do not invent rules. Every finding ties back to a specific section of the linked guide.
 - Do not flag generated code (`*.pb.go`, `*_connect.go`, `*_string.go`, `mock_*.go`, anything under `gen/`). Generated code follows generator conventions, not Google's guide.
-- Do not flag rules the user has explicitly opted out of via `.golangci.yml` or `//nolint:` directives — check for those first.
+- Do not flag rules the user has explicitly opted out of via `.golangci.yml` or `//nolint:` directives. Check for those first.
+- Do not reproduce secrets from the audited codebase in fenced blocks, tables, or prose. Redact or omit; cite `file:line`.
 
 ## Reference files
 
